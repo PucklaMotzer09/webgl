@@ -698,6 +698,27 @@ func (c *Context) GetParameter(pname int) *js.Object {
 	return c.Call("getParameter", pname)
 }
 
+// Returns the string value for a constant parameter
+func (c *Context) GetString(pname int) string {
+	return c.GetParameter(pname).String()
+}
+
+// Returns the integer array value for a constant parameter
+func (c *Context) GetIntegerv(pname int) []int32 {
+	var data []int32
+	obj := c.GetParameter(pname)
+	var obj1 *js.Object
+	obj1 = obj.Index(0)
+	for i := 1; obj1 != js.Undefined; i++ {
+		data = append(data, int32(obj1.Int()))
+		obj1 = obj.Index(i)
+	}
+	if len(data) == 0 {
+		data = append(data, int32(obj.Int()))
+	}
+	return data
+}
+
 // Returns a value for the WebGL error flag and clears the flag.
 func (c *Context) GetError() int {
 	return c.Call("getError").Int()
