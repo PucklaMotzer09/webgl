@@ -335,6 +335,8 @@ type Context struct {
 	VERTEX_SHADER                                int `js:"VERTEX_SHADER"`
 	VIEWPORT                                     int `js:"VIEWPORT"`
 	ZERO                                         int `js:"ZERO"`
+	FALSE                                        int
+	TRUE                                         int
 }
 
 // NewContext takes an HTML5 canvas object and optional context attributes.
@@ -359,6 +361,7 @@ func NewContext(canvas *js.Object, ca *ContextAttributes) (*Context, error) {
 	}
 	gl := canvas.Call("getContext", "webgl", attrs)
 	if gl == nil {
+		println("WebGL2 failed")
 		gl = canvas.Call("getContext", "experimental-webgl", attrs)
 		if gl == nil {
 			return nil, errors.New("Creating a webgl context has failed.")
@@ -366,6 +369,8 @@ func NewContext(canvas *js.Object, ca *ContextAttributes) (*Context, error) {
 	}
 	ctx := new(Context)
 	ctx.Object = gl
+	ctx.FALSE = 0
+	ctx.TRUE = 1
 	return ctx, nil
 }
 
@@ -447,9 +452,13 @@ func (c *Context) BlendFuncSeparate(srcRGB, dstRGB, srcAlpha, dstAlpha int) {
 }
 
 // Creates a buffer in memory and initializes it with array data.
-// If no array is provided, the contents of the buffer is initialized to 0.
-func (c *Context) BufferData(target int, data interface{}, usage int) {
-	c.Call("bufferData", target, data, usage)
+// If no array is provided, the contents of the buffer is initialized to size.
+func (c *Context) BufferData(target, size int, data interface{}, usage int) {
+	if data == nil {
+		c.Call("bufferData", target, size, usage)
+	} else {
+		c.Call("bufferData", target, data, usage)
+	}
 }
 
 // Used to modify or update some or all of a data store for a bound buffer object.
@@ -638,8 +647,8 @@ func (c *Context) Flush() {
 
 // Attaches a WebGLRenderbuffer object as a logical buffer to the
 // currently bound WebGLFramebuffer object.
-func (c *Context) FrameBufferRenderBuffer(target, attachment, renderbufferTarget int, renderbuffer *js.Object) {
-	c.Call("framebufferRenderBuffer", target, attachment, renderbufferTarget, renderbuffer)
+func (c *Context) FrameBufferRenderbuffer(target, attachment, renderbufferTarget int, renderbuffer *js.Object) {
+	c.Call("framebufferRenderbuffer", target, attachment, renderbufferTarget, renderbuffer)
 }
 
 // Attaches a texture to a WebGLFramebuffer object.
@@ -704,17 +713,17 @@ func (c *Context) GetString(pname int) string {
 }
 
 // Returns the integer array value for a constant parameter
-func (c *Context) GetIntegerv(pname int) []int32 {
-	var data []int32
+func (c *Context) GetIntegerv(pname int) []int {
+	var data []int
 	obj := c.GetParameter(pname)
 	var obj1 *js.Object
 	obj1 = obj.Index(0)
 	for i := 1; obj1 != js.Undefined; i++ {
-		data = append(data, int32(obj1.Int()))
+		data = append(data, obj1.Int())
 		obj1 = obj.Index(i)
 	}
 	if len(data) == 0 {
-		data = append(data, int32(obj.Int()))
+		data = append(data, obj.Int())
 	}
 	return data
 }
@@ -736,16 +745,38 @@ func (c *Context) GetFramebufferAttachmentParameter(target, attachment, pname in
 	return c.Call("getFramebufferAttachmentParameter", target, attachment, pname)
 }
 
+func (c *Context) GetProgramParameter(program *js.Object, pname int) *js.Object {
+	return c.Call("getProgramParameter", program, pname)
+}
+
 // Returns the value of the program parameter that corresponds to a supplied pname
 // which is interpreted as an int.
-func (c *Context) GetProgramParameteri(program *js.Object, pname int) int {
-	return c.Call("getProgramParameter", program, pname).Int()
+func (c *Context) GetProgrami(program *js.Object, pname int) int {
+	return c.GetProgramParameter(program, pname).Int()
+}
+
+// Returns the value of the program parameter that corresponds to a supplied pname
+// which is interpreted as an int.
+func (c *Context) GetProgramiv(program *js.Object, pname int) []int {
+	obj := c.GetProgramParameter(program, pname)
+	var data []int
+	obji := obj.Index(0)
+	for i := 1; obji != js.Undefined; i++ {
+		data = append(data, obji.Int())
+		obji = obj.Index(i)
+	}
+
+	if len(data) == 0 {
+		data = append(data, obj.Int())
+	}
+
+	return data
 }
 
 // Returns the value of the program parameter that corresponds to a supplied pname
 // which is interpreted as a bool.
-func (c *Context) GetProgramParameterb(program *js.Object, pname int) bool {
-	return c.Call("getProgramParameter", program, pname).Bool()
+func (c *Context) GetProgramb(program *js.Object, pname int) bool {
+	return c.GetProgramParameter(program, pname).Bool()
 }
 
 // Returns information about the last error that occurred during
@@ -766,8 +797,24 @@ func (c *Context) GetShaderParameter(shader *js.Object, pname int) *js.Object {
 	return c.Call("getShaderParameter", shader, pname)
 }
 
+func (c *Context) GetShaderiv(shader *js.Object, pname int) []int {
+	obj := c.GetShaderParameter(shader, pname)
+	var data []int
+	obji := obj.Index(0)
+	for i := 1; obji != js.Undefined; i++ {
+		data = append(data, obji.Int())
+		obji = obj.Index(i)
+	}
+
+	if len(data) == 0 {
+		data = append(data, obj.Int())
+	}
+
+	return data
+}
+
 // Returns the value of the parameter associated with pname for a shader object.
-func (c *Context) GetShaderParameterb(shader *js.Object, pname int) bool {
+func (c *Context) GetShaderb(shader *js.Object, pname int) bool {
 	return c.Call("getShaderParameter", shader, pname).Bool()
 }
 
@@ -920,8 +967,8 @@ func (c *Context) ShaderSource(shader *js.Object, source string) {
 // public function stencilOpSeparate(face:GLenum, fail:GLenum, zfail:GLenum, zpass:GLenum) : Void;
 
 // Loads the supplied pixel data into a texture.
-func (c *Context) TexImage2D(target, level, internalFormat, format, kind int, image *js.Object) {
-	c.Call("texImage2D", target, level, internalFormat, format, kind, image)
+func (c *Context) TexImage2D(target, level, internalFormat, width, height, border, format, kind int, pixels *js.Object) {
+	c.Call("texImage2D", target, level, internalFormat, width, height, border, format, kind, pixels)
 }
 
 // Sets texture parameters for the current texture unit.
