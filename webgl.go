@@ -99,6 +99,7 @@ type Context struct {
 	DEPTH_WRITEMASK                              int `js:"DEPTH_WRITEMASK"`
 	DITHER                                       int `js:"DITHER"`
 	DONT_CARE                                    int `js:"DONT_CARE"`
+	DRAW_FRAMEBUFFER                             int `js:"DRAW_FRAMEBUFFER"`
 	DST_ALPHA                                    int `js:"DST_ALPHA"`
 	DST_COLOR                                    int `js:"DST_COLOR"`
 	DYNAMIC_DRAW                                 int `js:"DYNAMIC_DRAW"`
@@ -200,6 +201,7 @@ type Context struct {
 	POLYGON_OFFSET_FACTOR                        int `js:"POLYGON_OFFSET_FACTOR"`
 	POLYGON_OFFSET_FILL                          int `js:"POLYGON_OFFSET_FILL"`
 	POLYGON_OFFSET_UNITS                         int `js:"POLYGON_OFFSET_UNITS"`
+	READ_FRAMEBUFFER                             int `js:"READ_FRAMEBUFFER"`
 	RED_BITS                                     int `js:"RED_BITS"`
 	RENDERBUFFER                                 int `js:"RENDERBUFFER"`
 	RENDERBUFFER_ALPHA_SIZE                      int `js:"RENDERBUFFER_ALPHA_SIZE"`
@@ -339,6 +341,8 @@ type Context struct {
 	TRUE                                         int
 }
 
+var isWebGL2 = false
+
 // NewContext takes an HTML5 canvas object and optional context attributes.
 // If an error is returned it means you won't have access to WebGL
 // functionality.
@@ -359,12 +363,16 @@ func NewContext(canvas *js.Object, ca *ContextAttributes) (*Context, error) {
 		"premultipliedAlpha":    ca.PremultipliedAlpha,
 		"preserveDrawingBuffer": ca.PreserveDrawingBuffer,
 	}
-	gl := canvas.Call("getContext", "webgl", attrs)
+	isWebGL2 = true
+	gl := canvas.Call("getContext", "webgl2", attrs)
 	if gl == nil {
-		println("WebGL2 failed")
-		gl = canvas.Call("getContext", "experimental-webgl", attrs)
+		isWebGL2 = false
+		gl = canvas.Call("getContext", "webgl", attrs)
 		if gl == nil {
-			return nil, errors.New("Creating a webgl context has failed.")
+			gl = canvas.Call("getContext", "experimental-webgl")
+			if gl == nil {
+				return nil, errors.New("Creating a webgl context has failed.")
+			}
 		}
 	}
 	ctx := new(Context)
@@ -422,6 +430,14 @@ func (c *Context) BindRenderbuffer(target int, renderbuffer *js.Object) {
 // Binds a named texture object to a target.
 func (c *Context) BindTexture(target int, texture *js.Object) {
 	c.Call("bindTexture", target, texture)
+}
+
+func (c *Context) BindVertexArray(vertexArray *js.Object) {
+	c.Call("bindVertexArray", vertexArray)
+}
+
+func (c *Context) BlitFramebuffer(rcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter int) {
+	c.Call("blitFramebuffer", rcX0, srcY0, srcX1, srcY1, dstX0, dstY0, dstX1, dstY1, mask, filter)
 }
 
 // The GL_BLEND_COLOR may be used to calculate the source and destination blending factors.
@@ -502,6 +518,10 @@ func (c *Context) CompileShader(shader *js.Object) {
 	c.Call("compileShader", shader)
 }
 
+func (c *Context) CopyBufferSubData(readTarget, writeTarget, readOffset, writeOffset, size int) {
+	c.Call("copyBufferSubData", readTarget, writeTarget, readOffset, writeOffset, size)
+}
+
 // Copies a rectangle of pixels from the current WebGLFramebuffer into a texture image.
 func (c *Context) CopyTexImage2D(target, level, internal, x, y, w, h, border int) {
 	c.Call("copyTexImage2D", target, level, internal, x, y, w, h, border)
@@ -541,6 +561,10 @@ func (c *Context) CreateShader(typ int) *js.Object {
 // Used to generate a WebGLTexture object to which images can be bound.
 func (c *Context) CreateTexture() *js.Object {
 	return c.Call("createTexture")
+}
+
+func (c *Context) CreateVertexArray() *js.Object {
+	return c.Call("createVertexArray")
 }
 
 // Sets whether or not front, back, or both facing facets are able to be culled.
@@ -585,6 +609,10 @@ func (c *Context) DeleteTexture(texture *js.Object) {
 	c.Call("deleteTexture", texture)
 }
 
+func (c *Context) DeleteVertexArray(vertexArray *js.Object) {
+	c.Call("deleteVertexArray", vertexArray)
+}
+
 // Sets a function to use to compare incoming pixel depth to the
 // current depth buffer value.
 func (c *Context) DepthFunc(fun int) {
@@ -621,9 +649,18 @@ func (c *Context) DrawArrays(mode, first, count int) {
 	c.Call("drawArrays", mode, first, count)
 }
 
+func (c *Context) DrawBuffers(buffers []int) {
+	c.Call("drawBuffers", buffers)
+}
+
 // Renders geometric primitives indexed by element array data.
 func (c *Context) DrawElements(mode, count, typ, offset int) {
 	c.Call("drawElements", mode, count, typ, offset)
+}
+
+// Renders multiple instances of the same buffer indexed by element array data
+func (c *Context) DrawElementsInstanced(mode, count, typ, offset, instanceCount int) {
+	c.Call("drawElementsInstanced", mode, count, typ, offset, instanceCount)
 }
 
 // Turns on specific WebGL capabilities for this context.
@@ -647,7 +684,7 @@ func (c *Context) Flush() {
 
 // Attaches a WebGLRenderbuffer object as a logical buffer to the
 // currently bound WebGLFramebuffer object.
-func (c *Context) FrameBufferRenderbuffer(target, attachment, renderbufferTarget int, renderbuffer *js.Object) {
+func (c *Context) FramebufferRenderbuffer(target, attachment, renderbufferTarget int, renderbuffer *js.Object) {
 	c.Call("framebufferRenderbuffer", target, attachment, renderbufferTarget, renderbuffer)
 }
 
@@ -933,6 +970,10 @@ func (c *Context) PolygonOffset(factor, units float64) {
 	c.Call("polygonOffset", factor, units)
 }
 
+func (c *Context) ReadBuffer(src int) {
+	c.Call("readBuffer", src)
+}
+
 // TODO: Figure out if pixels should be a slice.
 // Reads pixel data into an ArrayBufferView object from a
 // rectangular area in the color buffer of the active frame buffer.
@@ -1058,6 +1099,10 @@ func (c *Context) ValidateProgram(program *js.Object) {
 	c.Call("validateProgram", program)
 }
 
+func (c *Context) VertexAttribDivisor(index, divisor int) {
+	c.Call("vertexAttribDivisor", index, divisor)
+}
+
 func (c *Context) VertexAttribPointer(index, size, typ int, normal bool, stride int, offset int) {
 	c.Call("vertexAttribPointer", index, size, typ, normal, stride, offset)
 }
@@ -1075,4 +1120,17 @@ func (c *Context) VertexAttribPointer(index, size, typ int, normal bool, stride 
 // the rendering results of the drawing buffer.
 func (c *Context) Viewport(x, y, width, height int) {
 	c.Call("viewport", x, y, width, height)
+}
+
+// A function for compatibility with go-gl
+func (c *Context) PtrOffset(offset int) int {
+	return offset
+}
+
+func (c *Context) GetVersioni() int {
+	if isWebGL2 {
+		return 20
+	} else {
+		return 10
+	}
 }
